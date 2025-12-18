@@ -39,3 +39,9 @@ impl From<std::str::Utf8Error> for ParsError {
         Self::WrongFormat(format!("{e}"))
     }
 }
+
+impl From<std::num::ParseIntError> for ParsError {
+    fn from(e: std::num::ParseIntError) -> Self {
+        Self::WrongFormat(format!("{e}"))
+    }
+}

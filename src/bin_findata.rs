@@ -1,6 +1,6 @@
 use super::parser::*;
 use super::error::ParsError;
-use std::io::{Read, Write, Cursor};
+use std::io::{Read, Write, BufReader};
 use chrono::DateTime;
 
 const MAGIC: u32 = 0x5950424E;
@@ -70,17 +70,16 @@ impl BinFinanceRecord {
         Ok(())
     }
 
-    fn deserialize<In: Read>(input: &mut In) -> Result<Self, ParsError> {
+    fn deserialize<In: Read>(input: &mut BufReader<In>) -> Result<Self, ParsError> {
         let magic = read_u32(input)?;
         if magic != MAGIC {
             return Err(ParsError::WrongFormat(format!{"Неверный magic: {magic}"}));
         }
 
         let record_size = read_u32(input)?;
-        let mut buf = Vec::<u8>::with_capacity(record_size as usize);
+        let mut buf = vec![0u8; record_size as usize];
         input.read_exact(&mut buf)?;
 
-        let mut cursor = Cursor::new(buf);
         let tx_id = read_u64(input)?;
         let tx_type = read_u8(input)?;
         let from_user_id = read_u64(input)?;
@@ -90,9 +89,9 @@ impl BinFinanceRecord {
         let status = read_u8(input)?;
         let desc_len = read_u32(input)?;
 
-        let mut desk_buf = Vec::<u8>::with_capacity(desc_len as usize);
-        cursor.read_exact(&mut desk_buf)?;
-        let description = std::str::from_utf8(&desk_buf)?;
+        let mut desc_buf = vec![0u8; desc_len as usize];
+        input.read_exact(&mut desc_buf)?;
+        let description = std::str::from_utf8(&desc_buf)?;
 
         Ok(Self{
             magic,
@@ -111,13 +110,13 @@ impl BinFinanceRecord {
 }
 
 pub struct BinReader<In: Read>{
-    stream: In,
+    stream: BufReader<In>,
 }
 
 impl <In: Read> BinReader<In>{
     pub fn new(stream: In) -> Result<Self, ParsError> {
         Ok(Self {
-            stream,
+            stream: BufReader::new(stream),
         })
     }
 
