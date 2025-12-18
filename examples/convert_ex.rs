@@ -1,7 +1,7 @@
 use std::env;
 use std::fs::File;
 use std::path::Path;
-use fin_parser::converter::{convert, FinFormat};
+use fin_parser::converter::convert;
 
 fn main() {
     // Получаем аргументы командной строки
@@ -19,7 +19,7 @@ fn main() {
     let to_path = Path::new(&args[3]);
     let to_format = args[4].to_string();
 
-    let mut in_file =
+    let in_file =
     match File::open(from_path){
         Ok(val) => val,
         Err(e) => {
@@ -28,7 +28,7 @@ fn main() {
         }
     };
 
-    let mut out_file =
+    let out_file =
     match File::create(to_path){
         Ok(val) => val,
         Err(e) => {
@@ -37,10 +37,7 @@ fn main() {
         }
     };
 
-    let in_format = FinFormat::from_str(&from_format);
-    let out_format = FinFormat::from_str(&to_format);
-
-    if let Err(e) = convert(&mut in_file, in_format, &mut out_file, out_format) {
+    if let Err(e) = convert(in_file, &from_format, out_file, &to_format) {
         eprintln!("Ошибка конвертации форматов: {e}");
         return;
     }
