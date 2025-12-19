@@ -5,3 +5,4 @@ pub mod text_findata;
 pub mod bin_findata;
 pub mod converter;
 pub mod findata;
+pub mod constants;

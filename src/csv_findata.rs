@@ -3,25 +3,8 @@ use super::error::ParsError;
 use std::{io::{BufRead, BufReader, Read, Write}};
 use chrono::DateTime;
 use std::collections::HashMap;
+use super::constants::*;
 
-const TX_ID: &str = "TX_ID";
-const TX_TYPE: &str = "TX_TYPE";
-const FROM_USER_ID: &str = "FROM_USER_ID";
-const TO_USER_ID: &str = "TO_USER_ID";
-const AMOUNT: &str = "AMOUNT";
-const TIMESTAMP: &str = "TIMESTAMP";
-const STATUS: &str = "STATUS";
-const DESCRIPTION: &str = "DESCRIPTION";
-
-const DEPOSIT: &str = "DEPOSIT";
-const TRANSFER: &str = "TRANSFER";
-const WITHDRAWAL: &str = "WITHDRAWAL";
-
-const SUCCESS: &str = "SUCCESS";
-const FAILURE: &str = "FAILURE";
-const PENDING: &str = "PENDING";
-
-const CNT_VALUES: usize = 8;
 const HEADER_VALUES: [(&str, usize); CNT_VALUES] = 
         [(TX_ID, 0),
         (TX_TYPE, 1),
