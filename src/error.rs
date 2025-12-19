@@ -11,7 +11,7 @@ pub enum ParsError {
 impl Display for ParsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ParsError::IoError(msg) =>{
+            ParsError::IoError(msg) => {
                 write!(f, "Ошибка ввода вывода: {msg}")
             }
             ParsError::WrongFormat(msg) => {
@@ -20,7 +20,6 @@ impl Display for ParsError {
             ParsError::EndOfStream => {
                 write!(f, "Конец потока")
             }
-            _ => write!(f, "Неизвестная ошибка"),
         }
     }
 }

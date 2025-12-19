@@ -1,8 +1,8 @@
-pub mod parser;
-pub mod error;
-pub mod csv_findata;
-pub mod text_findata;
-pub mod bin_findata;
-pub mod converter;
-pub mod findata;
+pub mod bin_format;
 pub mod constants;
+pub mod converter;
+pub mod csv_format;
+pub mod error;
+pub mod finance_data;
+pub mod finance_format;
+pub mod text_format;

@@ -1,5 +1,3 @@
-use std::io::{Write, Read};
-use super::error::ParsError;
 use chrono::{DateTime, Utc};
 
 pub enum TxType {

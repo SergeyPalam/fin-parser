@@ -1,7 +1,7 @@
+use fin_parser::converter::convert;
 use std::env;
 use std::fs::File;
 use std::path::Path;
-use fin_parser::converter::convert;
 
 fn main() {
     // Получаем аргументы командной строки
@@ -19,8 +19,7 @@ fn main() {
     let to_path = Path::new(&args[3]);
     let to_format = args[4].to_string();
 
-    let in_file =
-    match File::open(from_path){
+    let in_file = match File::open(from_path) {
         Ok(val) => val,
         Err(e) => {
             eprintln!("Невозможно открыть файл: {e}");
@@ -28,8 +27,7 @@ fn main() {
         }
     };
 
-    let out_file =
-    match File::create(to_path){
+    let out_file = match File::create(to_path) {
         Ok(val) => val,
         Err(e) => {
             eprintln!("Невозможно создать файл: {e}");
