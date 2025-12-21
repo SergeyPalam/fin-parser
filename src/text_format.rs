@@ -138,7 +138,13 @@ impl TextFinanceRecord {
         };
 
         let description = if let Some(val) = self.fields.get(DESCRIPTION) {
-            remove_quotes(val)?
+            if !(val.starts_with('"') && val.ends_with('"')) {
+                return Err(ParsError::WrongFormat(format!(
+                    "Wrong description: {}",
+                    val
+                )));
+            }
+            remove_quotes(&val)
         } else {
             return Err(ParsError::WrongFormat(format!(
                 "Отсутствует запись: {DESCRIPTION}"

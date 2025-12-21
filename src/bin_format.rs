@@ -135,6 +135,13 @@ impl BinFinanceRecord {
             )));
         };
 
+        if !(self.description.starts_with('"') && self.description.ends_with('"')) {
+            return Err(ParsError::WrongFormat(format!(
+                "Wrong description: {}",
+                self.description
+            )));
+        }
+
         Ok(FinanceData {
             tx_id: self.tx_id,
             from_user_id: self.from_user_id,
@@ -143,7 +150,7 @@ impl BinFinanceRecord {
             amount: self.amount,
             timestamp,
             status,
-            description: remove_quotes(&self.description)?,
+            description: remove_quotes(&self.description),
         })
     }
 
@@ -325,7 +332,7 @@ mod tests {
     #[test]
     fn test_serialize_bin_record() {
         let record = bin_record_for_test();
-        let buf = vec![0u8; EXPECTED_BIN.len()];
+        let buf = Vec::new();
         let mut cursor = Cursor::new(buf);
         record.serialize(&mut cursor).unwrap();
 
@@ -358,7 +365,7 @@ mod tests {
 
     #[test]
     fn test_bin_writer() {
-        let buf = vec![0u8; EXPECTED_BIN_MULT.len()];
+        let buf = Vec::new();
         let stream = Cursor::new(buf);
         let mut bin_writer = BinWriter::new(stream).unwrap();
 
