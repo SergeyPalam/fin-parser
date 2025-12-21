@@ -6,3 +6,4 @@ pub mod error;
 pub mod finance_data;
 pub mod finance_format;
 pub mod text_format;
+pub mod utils;

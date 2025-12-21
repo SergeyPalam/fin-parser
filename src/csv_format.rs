@@ -1,6 +1,7 @@
 use super::constants::*;
 use super::error::ParsError;
 use super::finance_data::*;
+use super::utils::remove_quotes;
 use chrono::DateTime;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -100,18 +101,6 @@ impl CsvFinanceRecord {
 
         let description = self.fields[header[DESCRIPTION]].as_str();
 
-        let description = if let Some(val) = description
-            .strip_prefix("\"")
-            .map(|val| val.strip_suffix("\""))
-            .flatten()
-        {
-            val.to_owned()
-        } else {
-            return Err(ParsError::WrongFormat(format!(
-                "Неверный формат description: {description}"
-            )));
-        };
-
         Ok(FinanceData {
             tx_id,
             tx_type,
@@ -120,7 +109,7 @@ impl CsvFinanceRecord {
             amount,
             timestamp,
             status,
-            description,
+            description: remove_quotes(description)?,
         })
     }
 

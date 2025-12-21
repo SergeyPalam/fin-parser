@@ -1,6 +1,7 @@
 use super::constants::*;
 use super::error::ParsError;
 use super::finance_data::*;
+use super::utils::remove_quotes;
 use chrono::DateTime;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -137,17 +138,7 @@ impl TextFinanceRecord {
         };
 
         let description = if let Some(val) = self.fields.get(DESCRIPTION) {
-            if let Some(val) = val
-                .strip_prefix("\"")
-                .map(|val| val.strip_suffix("\""))
-                .flatten()
-            {
-                val.to_owned()
-            } else {
-                return Err(ParsError::WrongFormat(format!(
-                    "Неверный формат description: {val}"
-                )));
-            }
+            remove_quotes(val)?
         } else {
             return Err(ParsError::WrongFormat(format!(
                 "Отсутствует запись: {DESCRIPTION}"

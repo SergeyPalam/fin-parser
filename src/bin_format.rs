@@ -1,5 +1,6 @@
 use super::error::ParsError;
 use super::finance_data::*;
+use super::utils::remove_quotes;
 use chrono::DateTime;
 use std::io::{BufReader, Read, Write};
 
@@ -33,6 +34,7 @@ fn read_i64<T: Read>(stream: &mut T) -> Result<i64, ParsError> {
     Ok(res)
 }
 
+#[derive(Eq, PartialEq, Debug)]
 struct BinFinanceRecord {
     magic: u32,
     record_size: u32,
@@ -48,11 +50,6 @@ struct BinFinanceRecord {
 }
 
 impl BinFinanceRecord {
-    fn body_len_without_description() -> u32 {
-        let whole_size = std::mem::size_of::<Self>();
-        (whole_size - 8 - std::mem::size_of::<String>()) as u32 // body size = whole_size - size(magic_size) - size(record_size) - size(description)
-    }
-
     fn serialize<Out: Write>(&self, out: &mut Out) -> Result<(), ParsError> {
         let mut buf = Vec::new();
         buf.extend_from_slice(&self.magic.to_be_bytes());
@@ -75,10 +72,7 @@ impl BinFinanceRecord {
         if magic != MAGIC {
             return Err(ParsError::WrongFormat(format! {"Неверный magic: {magic}"}));
         }
-
         let record_size = read_u32(input)?;
-        let mut buf = vec![0u8; record_size as usize];
-        input.read_exact(&mut buf)?;
 
         let tx_id = read_u64(input)?;
         let tx_type = read_u8(input)?;
@@ -149,7 +143,7 @@ impl BinFinanceRecord {
             amount: self.amount,
             timestamp,
             status,
-            description: self.description.to_owned(),
+            description: remove_quotes(&self.description)?,
         })
     }
 
@@ -168,11 +162,20 @@ impl BinFinanceRecord {
 
         let timestamp = fin_data.timestamp.timestamp_millis() as u64;
 
-        let record_size =
-            BinFinanceRecord::body_len_without_description() + fin_data.description.len() as u32;
+        let description = format!("\"{}\"", fin_data.description);
+        let desc_len = description.len() as u32;
+        let record_size = std::mem::size_of_val(&fin_data.tx_id)
+            + std::mem::size_of_val(&tx_type)
+            + std::mem::size_of_val(&fin_data.from_user_id)
+            + std::mem::size_of_val(&fin_data.to_user_id)
+            + std::mem::size_of_val(&fin_data.amount)
+            + std::mem::size_of_val(&timestamp)
+            + std::mem::size_of_val(&status)
+            + std::mem::size_of_val(&desc_len)
+            + description.len();
         Self {
             magic: MAGIC,
-            record_size,
+            record_size: record_size as u32,
             tx_id: fin_data.tx_id,
             tx_type,
             from_user_id: fin_data.from_user_id,
@@ -180,8 +183,8 @@ impl BinFinanceRecord {
             amount: fin_data.amount,
             timestamp,
             status,
-            desc_len: fin_data.description.len() as u32,
-            description: fin_data.description.to_owned(),
+            desc_len,
+            description,
         }
     }
 }
@@ -226,5 +229,141 @@ impl<Out: Write> BinWriter<Out> {
         let record = BinFinanceRecord::from_fin_data(&data);
         record.serialize(&mut self.stream)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hex_literal::hex;
+    use std::io::Cursor;
+
+    const EXPECTED_BIN: &[u8] = &hex!(
+        "
+    59 50 42 4e 00 00 00 3f 00 03 8d 7e a4 c6 80 00
+    00 00 00 00 00 00 00 00 00 7f ff ff ff ff ff ff
+    ff 00 00 00 00 00 00 00 64 00 00 01 7c 38 94 fa
+    60 01 00 00 00 11 22 52 65 63 6f 72 64 20 6e 75
+    6d 62 65 72 20 31 22
+    "
+    );
+
+    const EXPECTED_BIN_MULT: &[u8] = &hex!(
+        "
+        59 50 42 4e 00 00 00 3f 00 03 8d 7e a4 c6 80 00
+        00 00 00 00 00 00 00 00 00 7f ff ff ff ff ff ff
+        ff 00 00 00 00 00 00 00 64 00 00 01 7c 38 94 fa
+        60 01 00 00 00 11 22 52 65 63 6f 72 64 20 6e 75
+        6d 62 65 72 20 31 22 59 50 42 4e 00 00 00 3f 00
+        03 8d 7e a4 c6 80 01 01 7f ff ff ff ff ff ff ff
+        7f ff ff ff ff ff ff ff 00 00 00 00 00 00 00 c8
+        00 00 01 7c 38 95 e4 c0 02 00 00 00 11 22 52 65
+        63 6f 72 64 20 6e 75 6d 62 65 72 20 32 22
+    "
+    );
+
+    fn fin_data1_for_test() -> FinanceData {
+        FinanceData {
+            tx_id: 1000000000000000,
+            tx_type: TxType::Deposit,
+            from_user_id: 0,
+            to_user_id: 9223372036854775807,
+            amount: 100,
+            timestamp: DateTime::from_timestamp_millis(1633036860000 as i64).unwrap(),
+            status: TxStatus::Failure,
+            description: "Record number 1".to_owned(),
+        }
+    }
+
+    fn fin_data2_for_test() -> FinanceData {
+        FinanceData {
+            tx_id: 1000000000000001,
+            tx_type: TxType::Transfer,
+            from_user_id: 9223372036854775807,
+            to_user_id: 9223372036854775807,
+            amount: 200,
+            timestamp: DateTime::from_timestamp_millis(1633036920000 as i64).unwrap(),
+            status: TxStatus::Pending,
+            description: "Record number 2".to_owned(),
+        }
+    }
+
+    fn bin_record_for_test() -> BinFinanceRecord {
+        BinFinanceRecord {
+            magic: MAGIC,
+            record_size: (EXPECTED_BIN.len() - 8) as u32,
+            tx_id: 1000000000000000,
+            tx_type: 0,
+            from_user_id: 0,
+            to_user_id: 9223372036854775807,
+            amount: 100,
+            timestamp: 1633036860000,
+            status: 1,
+            desc_len: 17,
+            description: "\"Record number 1\"".to_owned(),
+        }
+    }
+
+    #[test]
+    fn test_bin_from_finance_data() {
+        let fin_data = fin_data1_for_test();
+        let expected = bin_record_for_test();
+        let record = BinFinanceRecord::from_fin_data(&fin_data);
+
+        assert_eq!(record, expected);
+    }
+
+    #[test]
+    fn test_bin_to_finance_data() {
+        let bin_record = bin_record_for_test();
+        let expected = fin_data1_for_test();
+        let fin_data = bin_record.to_fin_data().unwrap();
+
+        assert_eq!(fin_data, expected);
+    }
+
+    #[test]
+    fn test_serialize_bin_record() {
+        let record = bin_record_for_test();
+        let buf = vec![0u8; EXPECTED_BIN.len()];
+        let mut cursor = Cursor::new(buf);
+        record.serialize(&mut cursor).unwrap();
+
+        assert_eq!(cursor.get_ref(), EXPECTED_BIN);
+    }
+
+    #[test]
+    fn test_deserialize_bin_record() {
+        let expected = bin_record_for_test();
+        let mut buf = BufReader::new(Cursor::new(EXPECTED_BIN));
+        let record = BinFinanceRecord::deserialize(&mut buf).unwrap();
+
+        assert_eq!(record, expected);
+    }
+
+    #[test]
+    fn test_bin_reader() {
+        let stream = Cursor::new(EXPECTED_BIN_MULT);
+        let mut bin_reader = BinReader::new(stream).unwrap();
+
+        let mut fin_info = Vec::new();
+        while let Some(fin_data) = bin_reader.read_fin_data().unwrap() {
+            fin_info.push(fin_data);
+        }
+
+        assert_eq!(fin_info.len(), 2);
+        assert_eq!(fin_info[0], fin_data1_for_test());
+        assert_eq!(fin_info[1], fin_data2_for_test());
+    }
+
+    #[test]
+    fn test_bin_writer() {
+        let buf = vec![0u8; EXPECTED_BIN_MULT.len()];
+        let stream = Cursor::new(buf);
+        let mut bin_writer = BinWriter::new(stream).unwrap();
+
+        bin_writer.write_fin_data(&fin_data1_for_test()).unwrap();
+        bin_writer.write_fin_data(&fin_data2_for_test()).unwrap();
+        assert_eq!(bin_writer.stream.get_ref(), EXPECTED_BIN_MULT);
     }
 }
