@@ -10,6 +10,40 @@ const CSV_FORMAT: &str = "csv";
 const TEXT_FORMAT: &str = "text";
 const BIN_FORMAT: &str = "bin";
 
+/// # Основной функционал библиотеки,
+/// # реализующий методы записи и чтения транзакций в различных форматах
+/// ## Example
+
+///```
+/// use fin_parser::tx_format::{TxReader, TxWriter};
+/// use std::io::Cursor;
+
+/// fn main() {
+///     let text_tx = r#"# Record 1 (DEPOSIT)
+///     TX_TYPE: DEPOSIT
+///     TO_USER_ID: 9223372036854775807
+///     FROM_USER_ID: 0
+///     TIMESTAMP: 1633036860000
+///     DESCRIPTION: "Record number 1"
+///     TX_ID: 1000000000000000
+///     AMOUNT: 100
+///     STATUS: FAILURE
+///     "#;
+
+///     let cursor = Cursor::new(text_tx.as_bytes());
+///     let mut reader = TxReader::new(cursor, "text").unwrap();
+///     let tx = reader.read_transaction().unwrap().unwrap();
+
+///     let mut writer = TxWriter::new(std::io::stdout(), "csv").unwrap();
+///     writer.write_transaction(&tx).unwrap();
+/// }
+
+///```
+
+/// Обертка над потоком Read, читающая транзакции, записанные в форматах
+/// - csv
+/// - text
+/// - bin
 pub enum TxReader<In: Read> {
     Csv(CsvTxReader<In>),
     Text(TextTxReader<In>),
@@ -18,6 +52,10 @@ pub enum TxReader<In: Read> {
 }
 
 impl<In: Read> TxReader<In> {
+    /// Конструктор, принимающий на вход поток и один из трёх форматов
+    /// - csv
+    /// - text
+    /// - bin
     pub fn new(stream: In, fin_format: &str) -> Result<Self, ParsError> {
         let res = match fin_format {
             CSV_FORMAT => Self::Csv(CsvTxReader::new(stream)?),
@@ -28,6 +66,8 @@ impl<In: Read> TxReader<In> {
         Ok(res)
     }
 
+    /// Метод чтения одной транзакции. TxReader читает порциями из потока, чтобы не создавать
+    /// дополнительную нагрузку на память
     pub fn read_transaction(&mut self) -> Result<Option<Transaction>, ParsError> {
         match self {
             Self::Csv(csv_reader) => csv_reader.read_transaction(),
@@ -40,6 +80,10 @@ impl<In: Read> TxReader<In> {
     }
 }
 
+/// Обертка над потоком Write, пишущая транзакции, в форматах
+/// - csv
+/// - text
+/// - bin
 pub enum TxWriter<Out: Write> {
     Csv(CsvTxWriter<Out>),
     Text(TextTxWriter<Out>),
@@ -48,6 +92,10 @@ pub enum TxWriter<Out: Write> {
 }
 
 impl<Out: Write> TxWriter<Out> {
+    /// Конструктор, принимающий на вход поток и один из трёх форматов
+    /// - csv
+    /// - text
+    /// - bin
     pub fn new(stream: Out, fin_format: &str) -> Result<Self, ParsError> {
         let res = match fin_format {
             CSV_FORMAT => Self::Csv(CsvTxWriter::new(stream)?),
@@ -58,6 +106,7 @@ impl<Out: Write> TxWriter<Out> {
         Ok(res)
     }
 
+    /// Метод записи одной транзакции.
     pub fn write_transaction(&mut self, tx: &Transaction) -> Result<(), ParsError> {
         match self {
             Self::Csv(csv_writer) => csv_writer.write_transaction(tx),
