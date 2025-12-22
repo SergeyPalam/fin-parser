@@ -1,10 +1,10 @@
 use super::constants::*;
 use super::error::ParsError;
 use super::finance_data::*;
-use super::utils::remove_quotes;
+use super::utils::{read_byte, remove_quotes};
 use chrono::DateTime;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 
 const HEADER_VALUES: [&str; CNT_VALUES] = [
     TX_ID,
@@ -17,27 +17,116 @@ const HEADER_VALUES: [&str; CNT_VALUES] = [
     DESCRIPTION,
 ];
 
-fn get_next_not_empty<In: Read>(stream: &mut BufReader<In>) -> Result<Vec<String>, ParsError> {
-    let mut values = String::new();
-    loop {
-        match stream.read_line(&mut values) {
-            Ok(0) => return Err(ParsError::EndOfStream),
-            Err(e) => return Err(e.into()),
-            Ok(_) => {
-                values = values.trim().to_owned();
-                if !values.is_empty() {
-                    break;
+enum Token {
+    Value(String),
+    EndOfLine(String),
+    EndOfStream(Option<String>),
+}
+
+#[derive(Clone, Copy)]
+enum ParserState {
+    WaitStartRecord,
+    WaitStartValue,
+    WaitEndRegular,
+    WaitEndString,
+    WaitEscaped,
+}
+
+struct Parser<In: Read> {
+    state: ParserState,
+    stream: In,
+}
+
+impl<In: Read> Parser<In> {
+    fn new(stream: In) -> Self {
+        Self {
+            state: ParserState::WaitStartRecord,
+            stream,
+        }
+    }
+
+    fn get_next_token(&mut self) -> Result<Token, ParsError> {
+        let mut buf = Vec::new();
+        loop {
+            let byte = match read_byte(&mut self.stream) {
+                Ok(val) => val,
+                Err(e) => match e {
+                    ParsError::EndOfStream => {
+                        let res = std::str::from_utf8(&buf)?.trim().to_string();
+                        if res.is_empty() {
+                            return Ok(Token::EndOfStream(None));
+                        } else {
+                            return Ok(Token::EndOfStream(Some(res)));
+                        }
+                    }
+                    _ => {
+                        return Err(e);
+                    }
+                },
+            };
+            match self.state {
+                ParserState::WaitStartRecord => {
+                    if byte == ' ' as u8 || byte == '\n' as u8 {
+                        continue;
+                    }
+
+                    if byte == '"' as u8 {
+                        buf.push(byte);
+                        self.state = ParserState::WaitEndString;
+                        continue;
+                    }
+
+                    buf.push(byte);
+                    self.state = ParserState::WaitEndRegular;
+                }
+                ParserState::WaitStartValue => {
+                    if byte == ' ' as u8 {
+                        continue;
+                    }
+
+                    if byte == '"' as u8 {
+                        buf.push(byte);
+                        self.state = ParserState::WaitEndString;
+                        continue;
+                    }
+                    buf.push(byte);
+                    self.state = ParserState::WaitEndRegular;
+                }
+                ParserState::WaitEndRegular => {
+                    if byte == ',' as u8 {
+                        let val_text = std::str::from_utf8(&buf)?.trim();
+                        self.state = ParserState::WaitStartValue;
+                        return Ok(Token::Value(val_text.to_owned()));
+                    }
+
+                    if byte == '\n' as u8 {
+                        let val_text = std::str::from_utf8(&buf)?.trim();
+                        self.state = ParserState::WaitStartRecord;
+                        return Ok(Token::EndOfLine(val_text.to_owned()));
+                    }
+                    buf.push(byte);
+                }
+
+                ParserState::WaitEndString => {
+                    if byte == '\\' as u8 {
+                        self.state = ParserState::WaitEscaped;
+                        continue;
+                    }
+                    if byte == '"' as u8 {
+                        buf.push(byte);
+                        self.state = ParserState::WaitEndRegular;
+                        continue;
+                    }
+                    buf.push(byte);
+                }
+                ParserState::WaitEscaped => {
+                    buf.push(byte);
+                    self.state = ParserState::WaitEndString;
+                    continue;
                 }
             }
         }
     }
-
-    let values: Vec<String> = values
-        .split(',')
-        .map(|value| value.trim().to_owned())
-        .collect();
-
-    Ok(values)
 }
 
 #[derive(Eq, PartialEq, Debug)]
@@ -57,12 +146,6 @@ impl CsvFinanceRecord {
         res.push('\n');
         out.write_all(res.as_bytes())?;
         Ok(())
-    }
-
-    fn deserialize<In: Read>(input: &mut BufReader<In>) -> Result<Self, ParsError> {
-        Ok(Self {
-            fields: get_next_not_empty(input)?,
-        })
     }
 
     fn to_fin_data(&self, header: &HashMap<String, usize>) -> Result<FinanceData, ParsError> {
@@ -127,7 +210,7 @@ impl CsvFinanceRecord {
             amount,
             timestamp,
             status,
-            description: remove_quotes(description),
+            description: remove_quotes(&description),
         })
     }
 
@@ -155,20 +238,39 @@ impl CsvFinanceRecord {
 }
 
 pub struct CsvReader<In: Read> {
-    stream: BufReader<In>,
+    parser: Parser<In>,
     header: Option<HashMap<String, usize>>,
 }
 
 impl<In: Read> CsvReader<In> {
     pub fn new(stream: In) -> Result<Self, ParsError> {
         Ok(Self {
-            stream: BufReader::new(stream),
+            parser: Parser::new(stream),
             header: None,
         })
     }
 
+    fn read_values(&mut self) -> Result<Vec<String>, ParsError> {
+        let mut res = Vec::new();
+        loop {
+            match self.parser.get_next_token()? {
+                Token::Value(val) => res.push(val),
+                Token::EndOfLine(val) => {
+                    res.push(val);
+                    return Ok(res);
+                }
+                Token::EndOfStream(val) => {
+                    if let Some(reminder) = val {
+                        res.push(reminder);
+                    }
+                    return Ok(res);
+                }
+            }
+        }
+    }
+
     fn read_header(&mut self) -> Result<(), ParsError> {
-        let header = get_next_not_empty(&mut self.stream)?;
+        let header = self.read_values()?;
         if header != HEADER_VALUES {
             return Err(ParsError::WrongFormat(format!(
                 "Неверный заголовок: {:?}",
@@ -189,19 +291,14 @@ impl<In: Read> CsvReader<In> {
         if self.header.is_none() {
             self.read_header()?;
         }
-        let record = match CsvFinanceRecord::deserialize(&mut self.stream) {
-            Ok(val) => val,
-            Err(e) => {
-                if let ParsError::EndOfStream = e {
-                    return Ok(None);
-                } else {
-                    return Err(e);
-                }
-            }
-        };
+        let fields = self.read_values()?;
+        if fields.is_empty() {
+            return Ok(None);
+        }
+        let csv_record = CsvFinanceRecord { fields };
 
         if let Some(header) = self.header.as_ref() {
-            Ok(Some(record.to_fin_data(header)?))
+            Ok(Some(csv_record.to_fin_data(header)?))
         } else {
             return Err(ParsError::WrongFormat("Отсутствует заголовок".to_owned()));
         }
@@ -347,15 +444,6 @@ mod tests {
         record.serialize(&mut cursor).unwrap();
 
         assert_eq!(std::str::from_utf8(cursor.get_ref()).unwrap(), EXPECTED_CSV);
-    }
-
-    #[test]
-    fn test_deserialize_csv_record() {
-        let expected = csv_record_for_test();
-        let mut buf = BufReader::new(Cursor::new(EXPECTED_CSV.as_bytes()));
-        let record = CsvFinanceRecord::deserialize(&mut buf).unwrap();
-
-        assert_eq!(record, expected);
     }
 
     #[test]
