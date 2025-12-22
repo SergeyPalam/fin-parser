@@ -2,7 +2,6 @@ use clap::Parser;
 use fin_parser::finance_format::{FinReader, FinWriter};
 use std::fs::File;
 
-/// Simple program to greet a person
 #[derive(Parser)]
 #[command(name = "YpbConverter")]
 #[command(version = "1.0")]
