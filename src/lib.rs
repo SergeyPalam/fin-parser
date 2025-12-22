@@ -1,9 +1,8 @@
-pub mod bin_format;
-pub mod constants;
-pub mod converter;
-pub mod csv_format;
+mod bin_format;
+mod constants;
+mod csv_format;
 pub mod error;
 pub mod finance_data;
 pub mod finance_format;
-pub mod text_format;
-pub mod utils;
+mod text_format;
+mod utils;

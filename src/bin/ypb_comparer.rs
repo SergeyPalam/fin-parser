@@ -1,5 +1,5 @@
 use clap::Parser;
-use fin_parser::finance_format::{FinReader, FinWriter};
+use fin_parser::finance_format::FinReader;
 use std::fs::File;
 
 #[derive(Parser)]
