@@ -1,5 +1,5 @@
 use clap::Parser;
-use fin_parser::finance_format::{FinReader, FinWriter};
+use fin_parser::tx_format::{TxReader, TxWriter};
 use std::fs::File;
 
 #[derive(Parser)]
@@ -30,7 +30,7 @@ fn main() {
         }
     };
 
-    let mut reader = match FinReader::new(input_file, &args.input_format) {
+    let mut reader = match TxReader::new(input_file, &args.input_format) {
         Ok(val) => val,
         Err(e) => {
             eprintln!("Невозможно создать парсер: {e}");
@@ -38,7 +38,7 @@ fn main() {
         }
     };
 
-    let mut writer = match FinWriter::new(std::io::stdout(), &args.output_format) {
+    let mut writer = match TxWriter::new(std::io::stdout(), &args.output_format) {
         Ok(val) => val,
         Err(e) => {
             eprintln!("Невозможно создать парсер для записи: {e}");
@@ -47,7 +47,7 @@ fn main() {
     };
 
     loop {
-        let fin_data = match reader.read_fin_data() {
+        let tx = match reader.read_transaction() {
             Ok(data) => {
                 if let Some(val) = data {
                     val
@@ -61,7 +61,7 @@ fn main() {
                 return;
             }
         };
-        if let Err(e) = writer.write_fin_data(&fin_data) {
+        if let Err(e) = writer.write_transaction(&tx) {
             eprintln!("Ошибка вывода данных: {e}");
             return;
         }

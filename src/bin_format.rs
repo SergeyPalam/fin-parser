@@ -1,5 +1,5 @@
 use super::error::ParsError;
-use super::finance_data::*;
+use super::transaction::*;
 use super::utils::remove_quotes;
 use chrono::DateTime;
 use std::io::{BufReader, Read, Write};
@@ -35,7 +35,7 @@ fn read_i64<T: Read>(stream: &mut T) -> Result<i64, ParsError> {
 }
 
 #[derive(Eq, PartialEq, Debug)]
-struct BinFinanceRecord {
+struct BinTxRecord {
     magic: u32,
     record_size: u32,
     tx_id: u64,
@@ -49,7 +49,7 @@ struct BinFinanceRecord {
     description: String,
 }
 
-impl BinFinanceRecord {
+impl BinTxRecord {
     fn serialize<Out: Write>(&self, out: &mut Out) -> Result<(), ParsError> {
         let mut buf = Vec::new();
         buf.extend_from_slice(&self.magic.to_be_bytes());
@@ -102,7 +102,7 @@ impl BinFinanceRecord {
         })
     }
 
-    fn to_fin_data(&self) -> Result<FinanceData, ParsError> {
+    fn to_transaction(&self) -> Result<Transaction, ParsError> {
         let tx_type = match self.tx_type {
             0 => TxType::Deposit,
             1 => TxType::Transfer,
@@ -142,7 +142,7 @@ impl BinFinanceRecord {
             )));
         }
 
-        Ok(FinanceData {
+        Ok(Transaction {
             tx_id: self.tx_id,
             from_user_id: self.from_user_id,
             tx_type,
@@ -154,28 +154,28 @@ impl BinFinanceRecord {
         })
     }
 
-    fn from_fin_data(fin_data: &FinanceData) -> Self {
-        let tx_type = match fin_data.tx_type {
+    fn from_transaction(tx: &Transaction) -> Self {
+        let tx_type = match tx.tx_type {
             TxType::Deposit => 0,
             TxType::Transfer => 1,
             TxType::Withdrawal => 2,
         } as u8;
 
-        let status = match fin_data.status {
+        let status = match tx.status {
             TxStatus::Success => 0,
             TxStatus::Failure => 1,
             TxStatus::Pending => 2,
         } as u8;
 
-        let timestamp = fin_data.timestamp.timestamp_millis() as u64;
+        let timestamp = tx.timestamp.timestamp_millis() as u64;
 
-        let description = format!("\"{}\"", fin_data.description);
+        let description = format!("\"{}\"", tx.description);
         let desc_len = description.len() as u32;
-        let record_size = std::mem::size_of_val(&fin_data.tx_id)
+        let record_size = std::mem::size_of_val(&tx.tx_id)
             + std::mem::size_of_val(&tx_type)
-            + std::mem::size_of_val(&fin_data.from_user_id)
-            + std::mem::size_of_val(&fin_data.to_user_id)
-            + std::mem::size_of_val(&fin_data.amount)
+            + std::mem::size_of_val(&tx.from_user_id)
+            + std::mem::size_of_val(&tx.to_user_id)
+            + std::mem::size_of_val(&tx.amount)
             + std::mem::size_of_val(&timestamp)
             + std::mem::size_of_val(&status)
             + std::mem::size_of_val(&desc_len)
@@ -183,11 +183,11 @@ impl BinFinanceRecord {
         Self {
             magic: MAGIC,
             record_size: record_size as u32,
-            tx_id: fin_data.tx_id,
+            tx_id: tx.tx_id,
             tx_type,
-            from_user_id: fin_data.from_user_id,
-            to_user_id: fin_data.to_user_id,
-            amount: fin_data.amount,
+            from_user_id: tx.from_user_id,
+            to_user_id: tx.to_user_id,
+            amount: tx.amount,
             timestamp,
             status,
             desc_len,
@@ -196,19 +196,19 @@ impl BinFinanceRecord {
     }
 }
 
-pub struct BinReader<In: Read> {
+pub struct BinTxReader<In: Read> {
     stream: BufReader<In>,
 }
 
-impl<In: Read> BinReader<In> {
+impl<In: Read> BinTxReader<In> {
     pub fn new(stream: In) -> Result<Self, ParsError> {
         Ok(Self {
             stream: BufReader::new(stream),
         })
     }
 
-    pub fn read_fin_data(&mut self) -> Result<Option<FinanceData>, ParsError> {
-        let record = match BinFinanceRecord::deserialize(&mut self.stream) {
+    pub fn read_transaction(&mut self) -> Result<Option<Transaction>, ParsError> {
+        let record = match BinTxRecord::deserialize(&mut self.stream) {
             Ok(val) => val,
             Err(e) => {
                 if let ParsError::EndOfStream = e {
@@ -219,21 +219,21 @@ impl<In: Read> BinReader<In> {
             }
         };
 
-        Ok(Some(record.to_fin_data()?))
+        Ok(Some(record.to_transaction()?))
     }
 }
 
-pub struct BinWriter<Out: Write> {
+pub struct BinTxWriter<Out: Write> {
     stream: Out,
 }
 
-impl<Out: Write> BinWriter<Out> {
+impl<Out: Write> BinTxWriter<Out> {
     pub fn new(stream: Out) -> Result<Self, ParsError> {
         Ok(Self { stream })
     }
 
-    pub fn write_fin_data(&mut self, data: &FinanceData) -> Result<(), ParsError> {
-        let record = BinFinanceRecord::from_fin_data(&data);
+    pub fn write_transaction(&mut self, data: &Transaction) -> Result<(), ParsError> {
+        let record = BinTxRecord::from_transaction(&data);
         record.serialize(&mut self.stream)?;
         Ok(())
     }
@@ -269,8 +269,8 @@ mod tests {
     "
     );
 
-    fn fin_data1_for_test() -> FinanceData {
-        FinanceData {
+    fn tx1_for_test() -> Transaction {
+        Transaction {
             tx_id: 1000000000000000,
             tx_type: TxType::Deposit,
             from_user_id: 0,
@@ -282,8 +282,8 @@ mod tests {
         }
     }
 
-    fn fin_data2_for_test() -> FinanceData {
-        FinanceData {
+    fn tx2_for_test() -> Transaction {
+        Transaction {
             tx_id: 1000000000000001,
             tx_type: TxType::Transfer,
             from_user_id: 9223372036854775807,
@@ -295,8 +295,8 @@ mod tests {
         }
     }
 
-    fn bin_record_for_test() -> BinFinanceRecord {
-        BinFinanceRecord {
+    fn bin_record_for_test() -> BinTxRecord {
+        BinTxRecord {
             magic: MAGIC,
             record_size: (EXPECTED_BIN.len() - 8) as u32,
             tx_id: 1000000000000000,
@@ -312,21 +312,21 @@ mod tests {
     }
 
     #[test]
-    fn test_bin_from_finance_data() {
-        let fin_data = fin_data1_for_test();
+    fn test_bin_from_transaction() {
+        let tx = tx1_for_test();
         let expected = bin_record_for_test();
-        let record = BinFinanceRecord::from_fin_data(&fin_data);
+        let record = BinTxRecord::from_transaction(&tx);
 
         assert_eq!(record, expected);
     }
 
     #[test]
-    fn test_bin_to_finance_data() {
+    fn test_bin_to_transaction() {
         let bin_record = bin_record_for_test();
-        let expected = fin_data1_for_test();
-        let fin_data = bin_record.to_fin_data().unwrap();
+        let expected = tx1_for_test();
+        let tx = bin_record.to_transaction().unwrap();
 
-        assert_eq!(fin_data, expected);
+        assert_eq!(tx, expected);
     }
 
     #[test]
@@ -343,7 +343,7 @@ mod tests {
     fn test_deserialize_bin_record() {
         let expected = bin_record_for_test();
         let mut buf = BufReader::new(Cursor::new(EXPECTED_BIN));
-        let record = BinFinanceRecord::deserialize(&mut buf).unwrap();
+        let record = BinTxRecord::deserialize(&mut buf).unwrap();
 
         assert_eq!(record, expected);
     }
@@ -351,26 +351,26 @@ mod tests {
     #[test]
     fn test_bin_reader() {
         let stream = Cursor::new(EXPECTED_BIN_MULT);
-        let mut bin_reader = BinReader::new(stream).unwrap();
+        let mut bin_reader = BinTxReader::new(stream).unwrap();
 
         let mut fin_info = Vec::new();
-        while let Some(fin_data) = bin_reader.read_fin_data().unwrap() {
-            fin_info.push(fin_data);
+        while let Some(tx) = bin_reader.read_transaction().unwrap() {
+            fin_info.push(tx);
         }
 
         assert_eq!(fin_info.len(), 2);
-        assert_eq!(fin_info[0], fin_data1_for_test());
-        assert_eq!(fin_info[1], fin_data2_for_test());
+        assert_eq!(fin_info[0], tx1_for_test());
+        assert_eq!(fin_info[1], tx2_for_test());
     }
 
     #[test]
     fn test_bin_writer() {
         let buf = Vec::new();
         let stream = Cursor::new(buf);
-        let mut bin_writer = BinWriter::new(stream).unwrap();
+        let mut bin_writer = BinTxWriter::new(stream).unwrap();
 
-        bin_writer.write_fin_data(&fin_data1_for_test()).unwrap();
-        bin_writer.write_fin_data(&fin_data2_for_test()).unwrap();
+        bin_writer.write_transaction(&tx1_for_test()).unwrap();
+        bin_writer.write_transaction(&tx2_for_test()).unwrap();
         assert_eq!(bin_writer.stream.get_ref(), EXPECTED_BIN_MULT);
     }
 }

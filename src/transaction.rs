@@ -14,8 +14,9 @@ pub enum TxStatus {
     Pending,
 }
 
+// Тип данных, описывающий информацию о транзакции
 #[derive(Eq, PartialEq, Debug)]
-pub struct FinanceData {
+pub struct Transaction {
     pub tx_id: u64,
     pub tx_type: TxType,
     pub from_user_id: u64,

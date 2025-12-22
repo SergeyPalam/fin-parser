@@ -1,5 +1,5 @@
 use clap::Parser;
-use fin_parser::finance_format::FinReader;
+use fin_parser::tx_format::TxReader;
 use std::fs::File;
 
 #[derive(Parser)]
@@ -34,7 +34,7 @@ fn main() {
         }
     };
 
-    let mut lhs_reader = match FinReader::new(lhs_file, &args.lhs_format) {
+    let mut lhs_reader = match TxReader::new(lhs_file, &args.lhs_format) {
         Ok(val) => val,
         Err(e) => {
             eprintln!("Невозможно создать парсер: {e}");
@@ -50,7 +50,7 @@ fn main() {
         }
     };
 
-    let mut rhs_reader = match FinReader::new(rhs_file, &args.rhs_format) {
+    let mut rhs_reader = match TxReader::new(rhs_file, &args.rhs_format) {
         Ok(val) => val,
         Err(e) => {
             eprintln!("Невозможно создать парсер: {e}");
@@ -59,8 +59,8 @@ fn main() {
     };
 
     loop {
-        let lhs_fin_data = lhs_reader.read_fin_data().expect("Ошибка чтения данных");
-        let rhs_fin_data = rhs_reader.read_fin_data().expect("Ошибка чтения данных");
+        let lhs_fin_data = lhs_reader.read_transaction().expect("Ошибка чтения данных");
+        let rhs_fin_data = rhs_reader.read_transaction().expect("Ошибка чтения данных");
         if lhs_fin_data.is_none() && rhs_fin_data.is_none() {
             break;
         }

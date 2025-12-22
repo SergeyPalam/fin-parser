@@ -1,6 +1,6 @@
 use super::constants::*;
 use super::error::ParsError;
-use super::finance_data::*;
+use super::transaction::*;
 use super::utils::{read_byte, remove_quotes};
 use chrono::DateTime;
 use std::collections::HashMap;
@@ -161,11 +161,11 @@ impl<In: Read> Parser<In> {
     }
 }
 
-struct TextFinanceRecord {
+struct TextTxRecord {
     fields: HashMap<String, String>,
 }
 
-impl TextFinanceRecord {
+impl TextTxRecord {
     fn serialize<Out: Write>(&self, out: &mut Out) -> Result<(), ParsError> {
         for (k, v) in self.fields.iter() {
             let line = format!("{k}: {v}\n");
@@ -175,7 +175,7 @@ impl TextFinanceRecord {
         Ok(())
     }
 
-    fn to_fin_data(&self) -> Result<FinanceData, ParsError> {
+    fn to_transaction(&self) -> Result<Transaction, ParsError> {
         if self.fields.len() != CNT_VALUES {
             return Err(ParsError::WrongFormat(format!(
                 "Неверрный формат записи: {:?}",
@@ -278,7 +278,7 @@ impl TextFinanceRecord {
             )));
         };
 
-        Ok(FinanceData {
+        Ok(Transaction {
             tx_id,
             tx_type,
             from_user_id,
@@ -290,45 +290,45 @@ impl TextFinanceRecord {
         })
     }
 
-    fn from_fin_data(fin_data: &FinanceData) -> Self {
+    fn from_transaction(tx: &Transaction) -> Self {
         let mut fields = HashMap::new();
-        fields.insert(TX_ID.to_owned(), fin_data.tx_id.to_string());
-        let tx_type = match fin_data.tx_type {
+        fields.insert(TX_ID.to_owned(), tx.tx_id.to_string());
+        let tx_type = match tx.tx_type {
             TxType::Deposit => DEPOSIT,
             TxType::Transfer => TRANSFER,
             TxType::Withdrawal => WITHDRAWAL,
         };
         fields.insert(TX_TYPE.to_owned(), tx_type.to_owned());
-        fields.insert(FROM_USER_ID.to_owned(), fin_data.from_user_id.to_string());
-        fields.insert(TO_USER_ID.to_owned(), fin_data.to_user_id.to_string());
-        fields.insert(AMOUNT.to_owned(), fin_data.amount.to_string());
-        let timestamp = fin_data.timestamp.timestamp_millis() as u64;
+        fields.insert(FROM_USER_ID.to_owned(), tx.from_user_id.to_string());
+        fields.insert(TO_USER_ID.to_owned(), tx.to_user_id.to_string());
+        fields.insert(AMOUNT.to_owned(), tx.amount.to_string());
+        let timestamp = tx.timestamp.timestamp_millis() as u64;
         fields.insert(TIMESTAMP.to_owned(), timestamp.to_string());
-        let status = match fin_data.status {
+        let status = match tx.status {
             TxStatus::Success => SUCCESS,
             TxStatus::Failure => FAILURE,
             TxStatus::Pending => PENDING,
         };
         fields.insert(STATUS.to_owned(), status.to_string());
-        let description = format!("\"{}\"", fin_data.description);
+        let description = format!("\"{}\"", tx.description);
         fields.insert(DESCRIPTION.to_owned(), description.to_string());
 
         Self { fields }
     }
 }
 
-pub struct TextReader<In: Read> {
+pub struct TextTxReader<In: Read> {
     parser: Parser<In>,
 }
 
-impl<In: Read> TextReader<In> {
+impl<In: Read> TextTxReader<In> {
     pub fn new(stream: In) -> Result<Self, ParsError> {
         Ok(Self {
             parser: Parser::new(stream),
         })
     }
 
-    pub fn read_fin_data(&mut self) -> Result<Option<FinanceData>, ParsError> {
+    pub fn read_transaction(&mut self) -> Result<Option<Transaction>, ParsError> {
         let mut fields = HashMap::new();
         loop {
             let token = self.parser.get_next_token()?;
@@ -352,23 +352,23 @@ impl<In: Read> TextReader<In> {
             return Ok(None);
         }
 
-        let text_record = TextFinanceRecord { fields };
+        let text_record = TextTxRecord { fields };
 
-        Ok(Some(text_record.to_fin_data()?))
+        Ok(Some(text_record.to_transaction()?))
     }
 }
 
-pub struct TextWriter<Out: Write> {
+pub struct TextTxWriter<Out: Write> {
     stream: Out,
 }
 
-impl<Out: Write> TextWriter<Out> {
+impl<Out: Write> TextTxWriter<Out> {
     pub fn new(stream: Out) -> Result<Self, ParsError> {
         Ok(Self { stream })
     }
 
-    pub fn write_fin_data(&mut self, data: &FinanceData) -> Result<(), ParsError> {
-        let record = TextFinanceRecord::from_fin_data(&data);
+    pub fn write_transaction(&mut self, data: &Transaction) -> Result<(), ParsError> {
+        let record = TextTxRecord::from_transaction(&data);
         record.serialize(&mut self.stream)?;
         Ok(())
     }
@@ -417,8 +417,8 @@ mod tests {
         res
     }
 
-    fn fin_data1_for_test() -> FinanceData {
-        FinanceData {
+    fn tx1_for_test() -> Transaction {
+        Transaction {
             tx_id: 1000000000000000,
             tx_type: TxType::Deposit,
             from_user_id: 0,
@@ -430,8 +430,8 @@ mod tests {
         }
     }
 
-    fn fin_data2_for_test() -> FinanceData {
-        FinanceData {
+    fn tx2_for_test() -> Transaction {
+        Transaction {
             tx_id: 1000000000000001,
             tx_type: TxType::Transfer,
             from_user_id: 9223372036854775807,
@@ -443,7 +443,7 @@ mod tests {
         }
     }
 
-    fn text_record_for_test() -> TextFinanceRecord {
+    fn text_record_for_test() -> TextTxRecord {
         let mut fields = HashMap::new();
         fields.insert(TX_ID.to_owned(), "1000000000000000".to_owned());
         fields.insert(TX_TYPE.to_owned(), "DEPOSIT".to_owned());
@@ -453,23 +453,23 @@ mod tests {
         fields.insert(TIMESTAMP.to_owned(), "1633036860000".to_owned());
         fields.insert(STATUS.to_owned(), "FAILURE".to_owned());
         fields.insert(DESCRIPTION.to_owned(), "\"Record number 1\"".to_owned());
-        TextFinanceRecord { fields }
+        TextTxRecord { fields }
     }
 
     #[test]
-    fn test_text_to_finance_data() {
+    fn test_text_to_transaction() {
         let text_record = text_record_for_test();
-        let expected = fin_data1_for_test();
-        let fin_data = text_record.to_fin_data().unwrap();
+        let expected = tx1_for_test();
+        let tx = text_record.to_transaction().unwrap();
 
-        assert_eq!(fin_data, expected);
+        assert_eq!(tx, expected);
     }
 
     #[test]
-    fn test_text_from_finance_data() {
-        let fin_data = fin_data1_for_test();
+    fn test_text_from_transaction() {
+        let tx = tx1_for_test();
         let expected = text_record_for_test();
-        let record = TextFinanceRecord::from_fin_data(&fin_data);
+        let record = TextTxRecord::from_transaction(&tx);
 
         assert!(eq_hash_maps(&record.fields, &expected.fields));
     }
@@ -477,37 +477,37 @@ mod tests {
     #[test]
     fn test_text_reader() {
         let stream = Cursor::new(EXPECTED_TEXT_MULT.as_bytes());
-        let mut csv_reader = TextReader::new(stream).unwrap();
+        let mut csv_reader = TextTxReader::new(stream).unwrap();
 
         let mut fin_info = Vec::new();
-        while let Some(fin_data) = csv_reader.read_fin_data().unwrap() {
-            fin_info.push(fin_data);
+        while let Some(tx) = csv_reader.read_transaction().unwrap() {
+            fin_info.push(tx);
         }
 
         assert_eq!(fin_info.len(), 2);
-        assert_eq!(fin_info[0], fin_data1_for_test());
-        assert_eq!(fin_info[1], fin_data2_for_test());
+        assert_eq!(fin_info[0], tx1_for_test());
+        assert_eq!(fin_info[1], tx2_for_test());
     }
 
     #[test]
     fn test_text_writer() {
         let buf = Vec::new();
         let stream = Cursor::new(buf);
-        let mut csv_writer = TextWriter::new(stream).unwrap();
+        let mut csv_writer = TextTxWriter::new(stream).unwrap();
 
-        csv_writer.write_fin_data(&fin_data1_for_test()).unwrap();
-        csv_writer.write_fin_data(&fin_data2_for_test()).unwrap();
+        csv_writer.write_transaction(&tx1_for_test()).unwrap();
+        csv_writer.write_transaction(&tx2_for_test()).unwrap();
 
         let buf = csv_writer.stream.get_ref();
         let stream = Cursor::new(buf);
-        let mut text_reader = TextReader::new(stream).unwrap();
+        let mut text_reader = TextTxReader::new(stream).unwrap();
         let mut fin_info = Vec::new();
-        while let Some(fin_data) = text_reader.read_fin_data().unwrap() {
-            fin_info.push(fin_data);
+        while let Some(tx) = text_reader.read_transaction().unwrap() {
+            fin_info.push(tx);
         }
 
         assert_eq!(fin_info.len(), 2);
-        assert_eq!(fin_info[0], fin_data1_for_test());
-        assert_eq!(fin_info[1], fin_data2_for_test());
+        assert_eq!(fin_info[0], tx1_for_test());
+        assert_eq!(fin_info[1], tx2_for_test());
     }
 }

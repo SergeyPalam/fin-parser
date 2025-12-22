@@ -1,6 +1,6 @@
 use super::constants::*;
 use super::error::ParsError;
-use super::finance_data::*;
+use super::transaction::*;
 use super::utils::{read_byte, remove_quotes};
 use chrono::DateTime;
 use std::collections::HashMap;
@@ -130,11 +130,11 @@ impl<In: Read> Parser<In> {
 }
 
 #[derive(Eq, PartialEq, Debug)]
-struct CsvFinanceRecord {
+struct CsvTxRecord {
     fields: Vec<String>,
 }
 
-impl CsvFinanceRecord {
+impl CsvTxRecord {
     fn serialize<Out: Write>(&self, out: &mut Out) -> Result<(), ParsError> {
         let mut res = String::new();
         for (idx, val) in self.fields.iter().enumerate() {
@@ -148,7 +148,7 @@ impl CsvFinanceRecord {
         Ok(())
     }
 
-    fn to_fin_data(&self, header: &HashMap<String, usize>) -> Result<FinanceData, ParsError> {
+    fn to_transaction(&self, header: &HashMap<String, usize>) -> Result<Transaction, ParsError> {
         if self.fields.len() != header.len() {
             return Err(ParsError::WrongFormat(
                 "Количество полей не соответствует заголовку".to_owned(),
@@ -202,7 +202,7 @@ impl CsvFinanceRecord {
             )));
         }
 
-        Ok(FinanceData {
+        Ok(Transaction {
             tx_id,
             tx_type,
             from_user_id,
@@ -214,35 +214,35 @@ impl CsvFinanceRecord {
         })
     }
 
-    fn from_fin_data(fin_data: &FinanceData, header: &HashMap<String, usize>) -> Self {
+    fn from_transaction(tx: &Transaction, header: &HashMap<String, usize>) -> Self {
         let mut fields = vec![String::new(); CNT_VALUES];
-        fields[header[TX_ID]] = fin_data.tx_id.to_string();
-        fields[header[TX_TYPE]] = match fin_data.tx_type {
+        fields[header[TX_ID]] = tx.tx_id.to_string();
+        fields[header[TX_TYPE]] = match tx.tx_type {
             TxType::Deposit => DEPOSIT.to_owned(),
             TxType::Transfer => TRANSFER.to_owned(),
             TxType::Withdrawal => WITHDRAWAL.to_owned(),
         };
-        fields[header[FROM_USER_ID]] = fin_data.from_user_id.to_string();
-        fields[header[TO_USER_ID]] = fin_data.to_user_id.to_string();
-        fields[header[AMOUNT]] = fin_data.amount.to_string();
-        let timestamp = fin_data.timestamp.timestamp_millis() as u64;
+        fields[header[FROM_USER_ID]] = tx.from_user_id.to_string();
+        fields[header[TO_USER_ID]] = tx.to_user_id.to_string();
+        fields[header[AMOUNT]] = tx.amount.to_string();
+        let timestamp = tx.timestamp.timestamp_millis() as u64;
         fields[header[TIMESTAMP]] = timestamp.to_string();
-        fields[header[STATUS]] = match fin_data.status {
+        fields[header[STATUS]] = match tx.status {
             TxStatus::Success => SUCCESS.to_owned(),
             TxStatus::Failure => FAILURE.to_owned(),
             TxStatus::Pending => PENDING.to_owned(),
         };
-        fields[header[DESCRIPTION]] = format!("\"{}\"", fin_data.description);
+        fields[header[DESCRIPTION]] = format!("\"{}\"", tx.description);
         Self { fields }
     }
 }
 
-pub struct CsvReader<In: Read> {
+pub struct CsvTxReader<In: Read> {
     parser: Parser<In>,
     header: Option<HashMap<String, usize>>,
 }
 
-impl<In: Read> CsvReader<In> {
+impl<In: Read> CsvTxReader<In> {
     pub fn new(stream: In) -> Result<Self, ParsError> {
         Ok(Self {
             parser: Parser::new(stream),
@@ -287,7 +287,7 @@ impl<In: Read> CsvReader<In> {
         Ok(())
     }
 
-    pub fn read_fin_data(&mut self) -> Result<Option<FinanceData>, ParsError> {
+    pub fn read_transaction(&mut self) -> Result<Option<Transaction>, ParsError> {
         if self.header.is_none() {
             self.read_header()?;
         }
@@ -295,22 +295,22 @@ impl<In: Read> CsvReader<In> {
         if fields.is_empty() {
             return Ok(None);
         }
-        let csv_record = CsvFinanceRecord { fields };
+        let csv_record = CsvTxRecord { fields };
 
         if let Some(header) = self.header.as_ref() {
-            Ok(Some(csv_record.to_fin_data(header)?))
+            Ok(Some(csv_record.to_transaction(header)?))
         } else {
             return Err(ParsError::WrongFormat("Отсутствует заголовок".to_owned()));
         }
     }
 }
 
-pub struct CsvWriter<Out: Write> {
+pub struct CsvTxWriter<Out: Write> {
     stream: Out,
     header: Option<HashMap<String, usize>>,
 }
 
-impl<Out: Write> CsvWriter<Out> {
+impl<Out: Write> CsvTxWriter<Out> {
     pub fn new(stream: Out) -> Result<Self, ParsError> {
         Ok(Self {
             stream,
@@ -338,13 +338,13 @@ impl<Out: Write> CsvWriter<Out> {
         Ok(())
     }
 
-    pub fn write_fin_data(&mut self, data: &FinanceData) -> Result<(), ParsError> {
+    pub fn write_transaction(&mut self, data: &Transaction) -> Result<(), ParsError> {
         if self.header.is_none() {
             self.write_header()?;
         }
 
         if let Some(header) = self.header.as_ref() {
-            let record = CsvFinanceRecord::from_fin_data(&data, header);
+            let record = CsvTxRecord::from_transaction(&data, header);
             record.serialize(&mut self.stream)?;
         } else {
             return Err(ParsError::WrongFormat("Не записан заголовок".to_owned()));
@@ -366,8 +366,8 @@ mod tests {
         1000000000000001,TRANSFER,9223372036854775807,9223372036854775807,200,1633036920000,PENDING,"Record number 2"
     "#;
 
-    fn fin_data1_for_test() -> FinanceData {
-        FinanceData {
+    fn tx1_for_test() -> Transaction {
+        Transaction {
             tx_id: 1000000000000000,
             tx_type: TxType::Deposit,
             from_user_id: 0,
@@ -379,8 +379,8 @@ mod tests {
         }
     }
 
-    fn fin_data2_for_test() -> FinanceData {
-        FinanceData {
+    fn tx2_for_test() -> Transaction {
+        Transaction {
             tx_id: 1000000000000001,
             tx_type: TxType::Transfer,
             from_user_id: 9223372036854775807,
@@ -392,8 +392,8 @@ mod tests {
         }
     }
 
-    fn csv_record_for_test() -> CsvFinanceRecord {
-        CsvFinanceRecord {
+    fn csv_record_for_test() -> CsvTxRecord {
+        CsvTxRecord {
             fields: vec![
                 "1000000000000000".to_owned(),
                 "DEPOSIT".to_owned(),
@@ -417,23 +417,23 @@ mod tests {
     }
 
     #[test]
-    fn test_csv_from_finance_data() {
-        let fin_data = fin_data1_for_test();
+    fn test_csv_from_transaction() {
+        let tx = tx1_for_test();
         let expected = csv_record_for_test();
         let header = get_header();
-        let record = CsvFinanceRecord::from_fin_data(&fin_data, &header);
+        let record = CsvTxRecord::from_transaction(&tx, &header);
 
         assert_eq!(record, expected);
     }
 
     #[test]
-    fn test_csv_to_finance_data() {
+    fn test_csv_to_transaction() {
         let csv_record = csv_record_for_test();
-        let expected = fin_data1_for_test();
+        let expected = tx1_for_test();
         let header = get_header();
-        let fin_data = csv_record.to_fin_data(&header).unwrap();
+        let tx = csv_record.to_transaction(&header).unwrap();
 
-        assert_eq!(fin_data, expected);
+        assert_eq!(tx, expected);
     }
 
     #[test]
@@ -449,37 +449,37 @@ mod tests {
     #[test]
     fn test_csv_reader() {
         let stream = Cursor::new(EXPECTED_CSV_MULT.as_bytes());
-        let mut csv_reader = CsvReader::new(stream).unwrap();
+        let mut csv_reader = CsvTxReader::new(stream).unwrap();
 
         let mut fin_info = Vec::new();
-        while let Some(fin_data) = csv_reader.read_fin_data().unwrap() {
-            fin_info.push(fin_data);
+        while let Some(tx) = csv_reader.read_transaction().unwrap() {
+            fin_info.push(tx);
         }
 
         assert_eq!(fin_info.len(), 2);
-        assert_eq!(fin_info[0], fin_data1_for_test());
-        assert_eq!(fin_info[1], fin_data2_for_test());
+        assert_eq!(fin_info[0], tx1_for_test());
+        assert_eq!(fin_info[1], tx2_for_test());
     }
 
     #[test]
     fn test_csv_writer() {
         let buf = Vec::new();
         let stream = Cursor::new(buf);
-        let mut csv_writer = CsvWriter::new(stream).unwrap();
+        let mut csv_writer = CsvTxWriter::new(stream).unwrap();
 
-        csv_writer.write_fin_data(&fin_data1_for_test()).unwrap();
-        csv_writer.write_fin_data(&fin_data2_for_test()).unwrap();
+        csv_writer.write_transaction(&tx1_for_test()).unwrap();
+        csv_writer.write_transaction(&tx2_for_test()).unwrap();
 
         let buf = csv_writer.stream.get_ref();
         let stream = Cursor::new(buf);
-        let mut csv_reader = CsvReader::new(stream).unwrap();
+        let mut csv_reader = CsvTxReader::new(stream).unwrap();
         let mut fin_info = Vec::new();
-        while let Some(fin_data) = csv_reader.read_fin_data().unwrap() {
-            fin_info.push(fin_data);
+        while let Some(tx) = csv_reader.read_transaction().unwrap() {
+            fin_info.push(tx);
         }
 
         assert_eq!(fin_info.len(), 2);
-        assert_eq!(fin_info[0], fin_data1_for_test());
-        assert_eq!(fin_info[1], fin_data2_for_test());
+        assert_eq!(fin_info[0], tx1_for_test());
+        assert_eq!(fin_info[1], tx2_for_test());
     }
 }
