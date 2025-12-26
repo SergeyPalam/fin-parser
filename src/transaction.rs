@@ -1,16 +1,24 @@
 use chrono::{DateTime, Utc};
 
 #[derive(Eq, PartialEq, Debug)]
+/// Тип транзакции
 pub enum TxType {
+    /// Зачисление средств
     Deposit,
+    /// Передача средств
     Transfer,
+    /// Трата средств
     Withdrawal,
 }
 
 #[derive(Eq, PartialEq, Debug)]
+/// Статус транзакции
 pub enum TxStatus {
+    /// Успешная транзакция
     Success,
+    /// Невыполненная транзакция
     Failure,
+    /// Транзакция в процессе выполнения
     Pending,
 }
 

@@ -1,32 +1,19 @@
-use std::fmt::Display;
 use std::io;
+use thiserror::Error;
 
 /// Класс описания ошибок библиотеки парсинга.
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum ParsError {
     /// Ошибка ввода-вывода с текстовым описанием
+    #[error("Ошибка ввода-вывода: {0}")]
     IoError(String),
     /// Ошибка, указывающая на неверный формат данных
+    #[error("Ошибка формата: {0}")]
     WrongFormat(String),
     /// Конец потока
+    #[error("Конец потока")]
     EndOfStream,
-}
-
-impl Display for ParsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ParsError::IoError(msg) => {
-                write!(f, "Ошибка ввода вывода: {msg}")
-            }
-            ParsError::WrongFormat(msg) => {
-                write!(f, "Неверный формат: {msg}")
-            }
-            ParsError::EndOfStream => {
-                write!(f, "Конец потока")
-            }
-        }
-    }
 }
 
 /// Ошибка ввода-вывода io::Error преобразуется по следующим правилам:
