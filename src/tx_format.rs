@@ -40,14 +40,15 @@ const BIN_FORMAT: &str = "bin";
 
 ///```
 
-/// Обертка над потоком Read, читающая транзакции, записанные в форматах
-/// - csv
-/// - text
-/// - bin
+/// Обертка над потоком Read, читающая транзакции, записанные в различных форматах
 pub enum TxReader<In: Read> {
+    /// csv
     Csv(CsvTxReader<In>),
+    /// text
     Text(TextTxReader<In>),
+    /// bin
     Bin(BinTxReader<In>),
+    /// Неподдерживаемый формат
     Unsupported(String),
 }
 
@@ -80,14 +81,15 @@ impl<In: Read> TxReader<In> {
     }
 }
 
-/// Обертка над потоком Write, пишущая транзакции, в форматах
-/// - csv
-/// - text
-/// - bin
+/// Обертка над потоком Write, пишущая транзакции, в различных форматах
 pub enum TxWriter<Out: Write> {
+    /// Csv
     Csv(CsvTxWriter<Out>),
+    /// Text
     Text(TextTxWriter<Out>),
+    /// Bin
     Bin(BinTxWriter<Out>),
+    /// Неподдерживаемый формат
     Unsupported(String),
 }
 
